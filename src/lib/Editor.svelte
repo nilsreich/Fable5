@@ -1,55 +1,59 @@
 <script>
   import Preview from './Preview.svelte'
   import { encodeMarkdown } from './urlcodec.js'
+  import { saveMarkdown, sheetTitle } from './db.js'
+  import { theme, toggleTheme } from './theme.svelte.js'
 
-  let { markdown = $bindable('') } = $props()
+  let { id, initial = '' } = $props()
 
+  let markdown = $state(initial)
   let fileInput = $state(null)
-  let shareInfo = $state('')
-  let fileName = $state('aufgabenblatt.md')
+  let toast = $state('')
+  let saved = $state(true)
+  let pane = $state('edit') // auf schmalen Screens: 'edit' | 'preview'
 
-  // Editor-Zustand fortlaufend in die URL schreiben (#e/<code>), damit
-  // Reload/Lesezeichen nichts verlieren. replaceState löst kein hashchange aus.
-  let syncTimer
+  // Änderungen fortlaufend in IndexedDB sichern (debounced)
+  let saveTimer
   $effect(() => {
     const text = markdown
-    clearTimeout(syncTimer)
-    syncTimer = setTimeout(async () => {
-      const code = await encodeMarkdown(text)
-      history.replaceState(null, '', `#e/${code}`)
+    saved = false
+    clearTimeout(saveTimer)
+    saveTimer = setTimeout(async () => {
+      await saveMarkdown(id, text)
+      saved = true
     }, 400)
-    return () => clearTimeout(syncTimer)
+    return () => clearTimeout(saveTimer)
   })
+
+  function showToast(msg) {
+    toast = msg
+    setTimeout(() => (toast = ''), 3000)
+  }
 
   async function shareLink() {
     const code = await encodeMarkdown(markdown)
     const url = `${location.origin}${location.pathname}#${code}`
     try {
       await navigator.clipboard.writeText(url)
-      shareInfo = `Link kopiert (${url.length} Zeichen)`
+      showToast(`Link kopiert (${url.length} Zeichen)`)
     } catch {
-      shareInfo = url
+      showToast(url)
     }
-    setTimeout(() => (shareInfo = ''), 4000)
-  }
-
-  function openFile() {
-    fileInput.click()
   }
 
   async function fileChosen(event) {
     const file = event.target.files[0]
     if (!file) return
     markdown = await file.text()
-    fileName = file.name
     event.target.value = ''
   }
 
   function saveFile() {
+    const name = sheetTitle(markdown).replace(/[^\wäöüÄÖÜß -]/g, '').trim() || 'arbeitsblatt'
     const blob = new Blob([markdown], { type: 'text/markdown' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
-    a.download = fileName
+    a.download = `${name}.md`
     a.click()
     URL.revokeObjectURL(a.href)
   }
@@ -57,12 +61,20 @@
 
 <div class="editor-layout">
   <header class="toolbar">
-    <strong>Aufgabenblatt-Editor</strong>
+    <button class="icon-btn" onclick={() => (location.hash = '')} title="Zur Übersicht" aria-label="Zur Übersicht">←</button>
+    <strong class="doc-title">{sheetTitle(markdown)}</strong>
+    <span class="save-state" class:saved>{saved ? 'Gespeichert' : 'Speichert …'}</span>
     <span class="spacer"></span>
-    <button onclick={openFile}>📂 Öffnen</button>
-    <button onclick={saveFile}>💾 Speichern</button>
-    <button class="primary" onclick={shareLink}>🔗 Link teilen</button>
-    {#if shareInfo}<span class="share-info">{shareInfo}</span>{/if}
+    <div class="pane-switch" role="tablist" aria-label="Ansicht wählen">
+      <button role="tab" aria-selected={pane === 'edit'} class:active={pane === 'edit'} onclick={() => (pane = 'edit')}>Bearbeiten</button>
+      <button role="tab" aria-selected={pane === 'preview'} class:active={pane === 'preview'} onclick={() => (pane = 'preview')}>Vorschau</button>
+    </div>
+    <button class="icon-btn" onclick={toggleTheme} title="Hell/Dunkel umschalten" aria-label="Hell/Dunkel umschalten">
+      {theme.current === 'dark' ? '☀️' : '🌙'}
+    </button>
+    <button onclick={() => fileInput.click()} title="Markdown-Datei öffnen">Öffnen</button>
+    <button onclick={saveFile} title="Als Markdown-Datei speichern">Speichern</button>
+    <button class="primary" onclick={shareLink} title="Anzeige-Link für Schüler kopieren">Link teilen</button>
     <input
       type="file"
       accept=".md,.markdown,.txt,text/markdown"
@@ -71,7 +83,7 @@
       hidden
     />
   </header>
-  <div class="panes">
+  <div class="panes" data-pane={pane}>
     <textarea
       class="source"
       bind:value={markdown}
@@ -82,4 +94,5 @@
       <Preview md={markdown} />
     </div>
   </div>
+  {#if toast}<div class="toast">{toast}</div>{/if}
 </div>

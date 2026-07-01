@@ -26,7 +26,18 @@ def nullstellen(a, b, c):
     # TODO: beide Lösungen zurückgeben
 \`\`\`
 
-## Aufgabe 3 — Ablauf verstehen
+## Aufgabe 3 — Graphen ablesen
+
+Bestimme die Schnittpunkte der beiden Graphen:
+
+\`\`\`plot
+f(x) = x^2 - 5x + 6
+g(x) = 0.5x - 1
+x: -1..7
+y: -3..8
+\`\`\`
+
+## Aufgabe 4 — Ablauf verstehen
 
 \`\`\`mermaid
 flowchart TD

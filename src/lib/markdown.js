@@ -3,6 +3,7 @@ import { markedHighlight } from 'marked-highlight'
 import markedKatex from 'marked-katex-extension'
 import hljs from 'highlight.js/lib/common'
 import DOMPurify from 'dompurify'
+import { renderPlot } from './plot.js'
 
 // Bild-Syntax ![alt](url) wird für Online-Medien erweitert:
 // - YouTube-/Vimeo-Links werden als eingebettetes Video (iframe) gerendert
@@ -56,8 +57,9 @@ marked.use(
   { renderer: mediaRenderer, gfm: true, breaks: true }
 )
 
-// Mermaid-Codeblöcke nicht highlighten, sondern als <pre class="mermaid">
-// ausgeben; mermaid.run() wandelt sie nach dem Einfügen ins DOM in SVG um.
+// Spezielle Codeblöcke: ```mermaid wird als <pre class="mermaid"> ausgegeben
+// (mermaid.run() wandelt sie nach dem Einfügen ins DOM in SVG um),
+// ```plot wird direkt als SVG-Funktionsgraph gerendert.
 marked.use({
   renderer: {
     code({ text, lang }) {
@@ -65,6 +67,9 @@ marked.use({
         return `<pre class="mermaid">${text
           .replaceAll('&', '&amp;')
           .replaceAll('<', '&lt;')}</pre>`
+      }
+      if (lang === 'plot') {
+        return renderPlot(text)
       }
       return false
     },
@@ -95,18 +100,24 @@ export function renderMarkdown(src) {
 }
 
 let mermaidPromise = null
+let mermaidTheme = null
 
 // Mermaid ist groß und wird nur geladen, wenn ein Diagramm vorkommt.
-export async function renderMermaid(container) {
+export async function renderMermaid(container, theme = 'light') {
   const nodes = container.querySelectorAll('pre.mermaid')
   if (!nodes.length) return
   if (!mermaidPromise) {
-    mermaidPromise = import('mermaid').then((m) => {
-      m.default.initialize({ startOnLoad: false, securityLevel: 'strict' })
-      return m.default
-    })
+    mermaidPromise = import('mermaid').then((m) => m.default)
   }
   const mermaid = await mermaidPromise
+  if (mermaidTheme !== theme) {
+    mermaidTheme = theme
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: 'strict',
+      theme: theme === 'dark' ? 'dark' : 'default',
+    })
+  }
   try {
     await mermaid.run({ nodes })
   } catch {
